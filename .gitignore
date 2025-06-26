@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.env
+
+# Database
+*.sqlite3
+/migrations/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
