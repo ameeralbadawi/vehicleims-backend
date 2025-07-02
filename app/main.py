@@ -1,18 +1,20 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import car
+from app.routers import car  # adjust path if needed
 
 app = FastAPI()
 
-# 👇 Add CORS middleware before including routers
+# Allow your frontend URL for CORS
+origins = [
+    "https://jolly-sand-0ed3a040f.2.azurestaticapps.net"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace "*" with your frontend URL in production
+    allow_origins=origins,  # allow only your frontend domain
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],    # allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],    # allow all headers
 )
 
-# Include your router
 app.include_router(car.router)
-
