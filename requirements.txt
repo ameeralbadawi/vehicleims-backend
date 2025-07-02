@@ -4,4 +4,3 @@ sqlalchemy
 psycopg2-binary
 alembic
 python-dotenv
-starlette==0.46.2
