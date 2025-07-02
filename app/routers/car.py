@@ -19,11 +19,18 @@ def create_car(car: CarCreate, db: Session = Depends(get_db)):
     existing = db.query(Car).filter(Car.vin == car.vin).first()
     if existing:
         raise HTTPException(status_code=400, detail="Car with this VIN already exists.")
-    new_car = Car(vin=car.vin, data=car.data)
+    
+    # Ensure status is inside the nested data, default to 'Available' if missing
+    car_data = dict(car.data)  # make a copy
+    if "status" not in car_data:
+        car_data["status"] = "Available"
+    
+    new_car = Car(vin=car.vin, data=car_data)
     db.add(new_car)
     db.commit()
     db.refresh(new_car)
     return new_car
+
 
 @router.get("/cars/")
 def get_all_cars(db: Session = Depends(get_db)):
