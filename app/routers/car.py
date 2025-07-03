@@ -38,10 +38,19 @@ def get_all_cars(db: Session = Depends(get_db)):
     return [
         {
             "vin": car.vin,
-            **(car.data or {})
+            **(car.data.get("CarDetails") or {}),
+            **(car.data.get("EstimateDetails") or {}),
+            **(car.data.get("PurchaseDetails") or {}),
+            **(car.data.get("TransportDetails") or {}),
+            **(car.data.get("PartsDetails") or {}),
+            **(car.data.get("MechanicDetails") or {}),
+            **(car.data.get("BodyshopDetails") or {}),
+            **(car.data.get("MiscellaniousDetails") or {}),
+            **(car.data.get("saleDetails") or {}),
         }
         for car in cars
     ]
+
 
 
 
