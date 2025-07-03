@@ -39,23 +39,28 @@ def get_all_cars(db: Session = Depends(get_db)):
     for car in cars:
         try:
             data = car.data or {}
-            car_details = {
+            status = data.get("status", "Unknown")
+            nested = data.get("Car", {})  # FIX: drill into "Car" key
+
+            car_info = {
                 "vin": car.vin,
-                "status": data.get("status", "Unknown"),
-                **(data.get("CarDetails") or {}),
-                **(data.get("EstimateDetails") or {}),
-                **(data.get("PurchaseDetails") or {}),
-                **(data.get("TransportDetails") or {}),
-                **(data.get("PartsDetails") or {}),
-                **(data.get("MechanicDetails") or {}),
-                **(data.get("BodyshopDetails") or {}),
-                **(data.get("MiscellaniousDetails") or {}),
-                **(data.get("saleDetails") or {}),
+                "status": status,
+                **(nested.get("CarDetails") or {}),
+                **(nested.get("EstimateDetails") or {}),
+                **(nested.get("PurchaseDetails") or {}),
+                **(nested.get("TransportDetails") or {}),
+                **(nested.get("PartsDetails") or {}),
+                **(nested.get("MechanicDetails") or {}),
+                **(nested.get("BodyshopDetails") or {}),
+                **(nested.get("MiscellaniousDetails") or {}),
+                **(nested.get("saleDetails") or {}),
             }
-            result.append(car_details)
+
+            result.append(car_info)
+
         except Exception as e:
             print(f"Error processing car {car.vin}: {e}")
-            continue  # skip broken entry
+            continue  # skip bad records
     return result
 
 @router.delete("/cars/{vin}")
