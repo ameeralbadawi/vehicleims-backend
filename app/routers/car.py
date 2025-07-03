@@ -31,29 +31,32 @@ def create_car(car: CarCreate, db: Session = Depends(get_db)):
     db.refresh(new_car)
     return new_car
 
-
 @router.get("/cars/")
 def get_all_cars(db: Session = Depends(get_db)):
     cars = db.query(Car).all()
-    return [
-        {
-            "vin": car.vin,
-            "status": car.status,
-            **(car.data.get("CarDetails") or {}),
-            **(car.data.get("EstimateDetails") or {}),
-            **(car.data.get("PurchaseDetails") or {}),
-            **(car.data.get("TransportDetails") or {}),
-            **(car.data.get("PartsDetails") or {}),
-            **(car.data.get("MechanicDetails") or {}),
-            **(car.data.get("BodyshopDetails") or {}),
-            **(car.data.get("MiscellaniousDetails") or {}),
-            **(car.data.get("saleDetails") or {}),
-        }
-        for car in cars
-    ]
+    result = []
 
-
-
+    for car in cars:
+        try:
+            data = car.data or {}
+            car_details = {
+                "vin": car.vin,
+                "status": data.get("status", "Unknown"),
+                **(data.get("CarDetails") or {}),
+                **(data.get("EstimateDetails") or {}),
+                **(data.get("PurchaseDetails") or {}),
+                **(data.get("TransportDetails") or {}),
+                **(data.get("PartsDetails") or {}),
+                **(data.get("MechanicDetails") or {}),
+                **(data.get("BodyshopDetails") or {}),
+                **(data.get("MiscellaniousDetails") or {}),
+                **(data.get("saleDetails") or {}),
+            }
+            result.append(car_details)
+        except Exception as e:
+            print(f"Error processing car {car.vin}: {e}")
+            continue  # skip broken entry
+    return result
 
 @router.delete("/cars/{vin}")
 def delete_car(vin: str, db: Session = Depends(get_db)):
