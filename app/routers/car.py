@@ -38,6 +38,7 @@ def get_all_cars(db: Session = Depends(get_db)):
     return [
         {
             "vin": car.vin,
+            "status": car.status,
             **(car.data.get("CarDetails") or {}),
             **(car.data.get("EstimateDetails") or {}),
             **(car.data.get("PurchaseDetails") or {}),
