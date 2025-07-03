@@ -21,7 +21,7 @@ def create_car(car: CarCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Car with this VIN already exists.")
     
     # Ensure status is inside the nested data, default to 'Available' if missing
-    car_data = dict(car.data)  # make a copy
+    car_data = dict(car.data)
     if "status" not in car_data:
         car_data["status"] = "Available"
     
@@ -29,7 +29,23 @@ def create_car(car: CarCreate, db: Session = Depends(get_db)):
     db.add(new_car)
     db.commit()
     db.refresh(new_car)
-    return new_car
+
+    # Return a flat structure like GET does
+    nested = car_data.get("Car", {})
+    return {
+        "vin": new_car.vin,
+        "status": car_data.get("status", "Unknown"),
+        **(nested.get("CarDetails") or {}),
+        **(nested.get("EstimateDetails") or {}),
+        **(nested.get("PurchaseDetails") or {}),
+        **(nested.get("TransportDetails") or {}),
+        **(nested.get("PartsDetails") or {}),
+        **(nested.get("MechanicDetails") or {}),
+        **(nested.get("BodyshopDetails") or {}),
+        **(nested.get("MiscellaniousDetails") or {}),
+        **(nested.get("saleDetails") or {}),
+        "id": new_car.id,
+    }
 
 @router.get("/cars/")
 def get_all_cars(db: Session = Depends(get_db)):
