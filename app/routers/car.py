@@ -34,7 +34,16 @@ def create_car(car: CarCreate, db: Session = Depends(get_db)):
 
 @router.get("/cars/")
 def get_all_cars(db: Session = Depends(get_db)):
-    return db.query(Car).all()
+    cars = db.query(Car).all()
+    return [
+        {
+            "vin": car.vin,
+            **(car.data or {})
+        }
+        for car in cars
+    ]
+
+
 
 @router.delete("/cars/{vin}")
 def delete_car(vin: str, db: Session = Depends(get_db)):
