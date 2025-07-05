@@ -87,3 +87,23 @@ def delete_car(vin: str, db: Session = Depends(get_db)):
     db.delete(car)
     db.commit()
     return {"detail": f"Car with VIN {vin} deleted."}
+
+@router.patch("/cars/{vin}")
+def update_car_status(vin: str, payload: dict, db: Session = Depends(get_db)):
+    new_status = payload.get("status")
+    
+    if not new_status:
+        raise HTTPException(status_code=400, detail="Missing 'status' in payload")
+
+    car = db.query(Car).filter(Car.vin == vin).first()
+    if not car:
+        raise HTTPException(status_code=404, detail="Car not found")
+
+    # Update the nested status inside the car's data
+    if car.data is None:
+        car.data = {}
+
+    car.data["status"] = new_status
+
+    db.commit()
+    return {"vin": vin, "status": new_status}
