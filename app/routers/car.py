@@ -59,6 +59,7 @@ def get_all_cars(db: Session = Depends(get_db)):
             nested = data.get("Car", {})  # FIX: drill into "Car" key
 
             car_info = {
+                "id": car.id,
                 "vin": car.vin,
                 "status": status,
                 **(nested.get("CarDetails") or {}),
@@ -91,7 +92,7 @@ def delete_car(vin: str, db: Session = Depends(get_db)):
 @router.patch("/cars/{vin}")
 def update_car_status(vin: str, payload: dict, db: Session = Depends(get_db)):
     new_status = payload.get("status")
-    
+
     if not new_status:
         raise HTTPException(status_code=400, detail="Missing 'status' in payload")
 
@@ -99,11 +100,20 @@ def update_car_status(vin: str, payload: dict, db: Session = Depends(get_db)):
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
-    # Update the nested status inside the car's data
+    # Make sure the nested data dict exists
     if car.data is None:
         car.data = {}
 
+    # Update both nested and optional top-level status
     car.data["status"] = new_status
+    car.status = new_status  # optional but useful for querying
 
     db.commit()
-    return {"vin": vin, "status": new_status}
+    db.refresh(car)
+
+    return {
+        "vin": vin,
+        "status": new_status,
+        "id": car.id  # <- include this!
+    }
+
