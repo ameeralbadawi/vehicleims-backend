@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from app.database import SessionLocal
 from app.models import Car
 from app.schemas import CarCreate
@@ -92,7 +93,7 @@ def delete_car(vin: str, db: Session = Depends(get_db)):
 @router.patch("/cars/{vin}")
 def update_car_status(vin: str, payload: dict, db: Session = Depends(get_db)):
     new_status = payload.get("status")
-
+    
     if not new_status:
         raise HTTPException(status_code=400, detail="Missing 'status' in payload")
 
@@ -100,20 +101,14 @@ def update_car_status(vin: str, payload: dict, db: Session = Depends(get_db)):
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
-    # Make sure the nested data dict exists
     if car.data is None:
         car.data = {}
 
-    # Update both nested and optional top-level status
     car.data["status"] = new_status
-    car.status = new_status  # optional but useful for querying
+
+    # ✅ Force SQLAlchemy to treat the data field as modified
+    flag_modified(car, "data")
 
     db.commit()
-    db.refresh(car)
-
-    return {
-        "vin": vin,
-        "status": new_status,
-        "id": car.id  # <- include this!
-    }
+    return {"vin": vin, "status": new_status, "id": car.id}
 
