@@ -113,30 +113,26 @@ def update_car_status(vin: str, payload: dict, db: Session = Depends(get_db)):
     return {"vin": vin, "status": new_status, "id": car.id}
 
 @router.put("/cars/{vin}")
-def update_car(vin: str, car_update: CarCreate, db: Session = Depends(get_db)):
+def update_car(vin: str, payload: dict, db: Session = Depends(get_db)):
     car = db.query(Car).filter(Car.vin == vin).first()
     if not car:
-        raise HTTPException(status_code=404, detail="Car not found")
+        raise HTTPException(status_code=404, detail="Car not found.")
 
-    car.data = dict(car_update.data)  # overwrite full data
-    flag_modified(car, "data")       # force SQLAlchemy to track the change
+    # Preserve existing structure and only update the "Car" section inside "data"
+    if car.data is None:
+        car.data = {}
+
+    car.data["Car"] = payload  # Save full Car object (with CarDetails, EstimateDetails, etc.)
+
+    # Preserve status if it already existed
+    if "status" not in car.data and car.status:
+        car.data["status"] = car.status
+        
+    flag_modified(car, "data")
 
     db.commit()
     db.refresh(car)
 
-    nested = car.data.get("Car", {})
-    return {
-        "vin": car.vin,
-        "status": car.data.get("status", "Unknown"),
-        "id": car.id,
-        **(nested.get("CarDetails") or {}),
-        **(nested.get("EstimateDetails") or {}),
-        **(nested.get("PurchaseDetails") or {}),
-        **(nested.get("TransportDetails") or {}),
-        **(nested.get("PartsDetails") or {}),
-        **(nested.get("MechanicDetails") or {}),
-        **(nested.get("BodyshopDetails") or {}),
-        **(nested.get("MiscellaniousDetails") or {}),
-        **(nested.get("saleDetails") or {}),
-    }
+    return {"vin": car.vin, "data": car.data}
+
 
