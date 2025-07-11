@@ -7,7 +7,9 @@ app = FastAPI()
 # CORS: Allow frontend domain to access backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://jolly-sand-0ed3a040f.2.azurestaticapps.net"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://jolly-sand-0ed3a040f.2.azurestaticapps.net"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
