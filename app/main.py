@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import car
+from app.routers import watchlists
+
 
 app = FastAPI()
 
@@ -17,3 +19,5 @@ app.add_middleware(
 
 # Register routers
 app.include_router(car.router)
+app.include_router(watchlists.router)
+
