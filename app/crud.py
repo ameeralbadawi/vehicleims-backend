@@ -15,6 +15,16 @@ def create_watchlist(db: Session, watchlist: schemas.WatchlistCreate):
     db.refresh(db_watchlist)
     return db_watchlist
 
+def update_watchlist_name(db: Session, watchlist_id: int, new_name: str):
+    watchlist = db.query(models.Watchlist).filter(models.Watchlist.id == watchlist_id).first()
+    if not watchlist:
+        return None
+    watchlist.name = new_name
+    db.commit()
+    db.refresh(watchlist)
+    return watchlist
+
+
 
 # WatchlistCar CRUD
 def get_watchlist_car(db: Session, car_id: int):

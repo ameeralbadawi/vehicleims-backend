@@ -29,6 +29,14 @@ def read_watchlist(watchlist_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Watchlist not found")
     return db_watchlist
 
+@router.patch("/{watchlist_id}", response_model=schemas.WatchlistRead)
+def update_watchlist(watchlist_id: int, watchlist_update: schemas.WatchlistUpdate, db: Session = Depends(get_db)):
+    updated_watchlist = crud.update_watchlist_name(db, watchlist_id, watchlist_update.name)
+    if not updated_watchlist:
+        raise HTTPException(status_code=404, detail="Watchlist not found")
+    return updated_watchlist
+
+
 
 # Add a car to the watchlist
 @router.post("/{watchlist_id}/cars/", response_model=schemas.WatchlistItemRead)
