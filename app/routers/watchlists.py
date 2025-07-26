@@ -36,7 +36,7 @@ def update_watchlist(watchlist_id: int, watchlist_update: schemas.WatchlistUpdat
         raise HTTPException(status_code=404, detail="Watchlist not found")
     return updated_watchlist
 
-@router.delete("/watchlists/{watchlist_id}", response_model=schemas.Watchlist)
+@router.delete("/{watchlist_id}", response_model=schemas.Watchlist)
 def delete_watchlist(watchlist_id: int, db: Session = Depends(get_db)):
     deleted = crud.delete_watchlist(db, watchlist_id)
     if not deleted:
