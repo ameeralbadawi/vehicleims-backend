@@ -52,3 +52,11 @@ class WatchlistRead(WatchlistBase):
 
 class WatchlistUpdate(BaseModel):
     name: str
+
+class Watchlist(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        orm_mode = True
+

@@ -24,6 +24,19 @@ def update_watchlist_name(db: Session, watchlist_id: int, new_name: str):
     db.refresh(watchlist)
     return watchlist
 
+def delete_watchlist(db: Session, watchlist_id: int):
+    watchlist = db.query(models.Watchlist).filter(models.Watchlist.id == watchlist_id).first()
+    if not watchlist:
+        return None
+
+    # Delete any related WatchlistItems first if cascade isn't enabled
+    db.query(models.WatchlistItem).filter(models.WatchlistItem.watchlist_id == watchlist_id).delete()
+
+    db.delete(watchlist)
+    db.commit()
+    return watchlist
+
+
 
 
 # WatchlistCar CRUD
