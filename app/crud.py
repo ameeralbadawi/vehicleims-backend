@@ -70,18 +70,37 @@ def get_watchlist_item(db: Session, watchlist_id: int, car_id: int):
 
 
 def delete_watchlist_item(db: Session, watchlist_id: int, car_id: int):
-    db_item = db.query(models.WatchlistItem).filter(
-        models.WatchlistItem.watchlist_id == watchlist_id,
-        models.WatchlistItem.car_id == car_id
-    ).first()
-    if db_item:
+    try:
+        db_item = db.query(models.WatchlistItem).filter(
+            models.WatchlistItem.watchlist_id == watchlist_id,
+            models.WatchlistItem.car_id == car_id
+        ).first()
+        
+        if not db_item:
+            return False
+            
+        # Check if car exists in other watchlists before deleting
+        car_in_other_watchlists = db.query(models.WatchlistItem).filter(
+            models.WatchlistItem.car_id == car_id,
+            models.WatchlistItem.watchlist_id != watchlist_id
+        ).count() > 0
+        
         db.delete(db_item)
+        
+        # Only delete the car if it's not in any other watchlists
+        if not car_in_other_watchlists:
+            db_car = db.query(models.WatchlistCar).filter(
+                models.WatchlistCar.id == car_id
+            ).first()
+            if db_car:
+                db.delete(db_car)
+        
         db.commit()
-        # Also delete the car if it's not referenced elsewhere
-        if not is_car_in_any_watchlist(db, car_id):
-            delete_watchlist_car(db, car_id)
-        return db_item
-    return None
+        return True
+        
+    except Exception as e:
+        db.rollback()
+        raise e
 
 def is_car_in_any_watchlist(db: Session, car_id: int) -> bool:
     return db.query(models.WatchlistItem).filter(
