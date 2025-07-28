@@ -59,3 +59,33 @@ def add_car_to_watchlist(watchlist_id: int, car: schemas.WatchlistCarCreate, db:
 def get_cars_in_watchlist(watchlist_id: int, db: Session = Depends(get_db)):
     items = crud.get_watchlist_items_by_watchlist(db, watchlist_id)
     return items
+
+# Delete a car from a watchlist
+@router.delete("/{watchlist_id}/cars/{car_id}", response_model=schemas.WatchlistItemRead)
+def delete_car_from_watchlist(
+    watchlist_id: int, 
+    car_id: int, 
+    db: Session = Depends(get_db)
+):
+    # First verify the watchlist exists
+    db_watchlist = crud.get_watchlist(db, watchlist_id)
+    if db_watchlist is None:
+        raise HTTPException(status_code=404, detail="Watchlist not found")
+    
+    # Find the specific car in this watchlist
+    db_item = crud.get_watchlist_item(db, watchlist_id, car_id)
+    if db_item is None:
+        raise HTTPException(
+            status_code=404, 
+            detail="Car not found in this watchlist"
+        )
+    
+    # Delete the watchlist item (the association between watchlist and car)
+    deleted_item = crud.delete_watchlist_item(db, watchlist_id, car_id)
+    
+    # Optionally: Also delete the car itself if it's not used in other watchlists
+    # This depends on your business logic
+    if not crud.is_car_in_any_watchlist(db, car_id):
+        crud.delete_watchlist_car(db, car_id)
+    
+    return deleted_item

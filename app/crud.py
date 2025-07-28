@@ -61,3 +61,39 @@ def create_watchlist_item(db: Session, item: schemas.WatchlistItemCreate):
 
 def get_watchlist_items_by_watchlist(db: Session, watchlist_id: int):
     return db.query(models.WatchlistItem).filter(models.WatchlistItem.watchlist_id == watchlist_id).all()
+
+def get_watchlist_item(db: Session, watchlist_id: int, car_id: int):
+    return db.query(models.WatchlistItem).filter(
+        models.WatchlistItem.watchlist_id == watchlist_id,
+        models.WatchlistItem.car_id == car_id
+    ).first()
+
+
+def delete_watchlist_item(db: Session, watchlist_id: int, car_id: int):
+    db_item = db.query(models.WatchlistItem).filter(
+        models.WatchlistItem.watchlist_id == watchlist_id,
+        models.WatchlistItem.car_id == car_id
+    ).first()
+    if db_item:
+        db.delete(db_item)
+        db.commit()
+        # Also delete the car if it's not referenced elsewhere
+        if not is_car_in_any_watchlist(db, car_id):
+            delete_watchlist_car(db, car_id)
+        return db_item
+    return None
+
+def is_car_in_any_watchlist(db: Session, car_id: int) -> bool:
+    return db.query(models.WatchlistItem).filter(
+        models.WatchlistItem.car_id == car_id
+    ).count() > 0
+
+def delete_watchlist_car(db: Session, car_id: int):
+    db_car = db.query(models.WatchlistCar).filter(
+        models.WatchlistCar.id == car_id
+    ).first()
+    if db_car:
+        db.delete(db_car)
+        db.commit()
+        return db_car
+    return None

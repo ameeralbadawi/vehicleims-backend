@@ -60,3 +60,12 @@ class Watchlist(BaseModel):
     class Config:
         orm_mode = True
 
+class WatchlistItemRead(BaseModel):
+    id: int
+    watchlist_id: int
+    car_id: int
+    car: WatchlistCarRead  # Assuming you have this
+    
+    class Config:
+        orm_mode = True
+
