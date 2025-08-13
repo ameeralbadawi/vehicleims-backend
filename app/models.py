@@ -8,6 +8,7 @@ class Car(Base):
     id = Column(Integer, primary_key=True, index=True)
     vin = Column(String, unique=True, index=True, nullable=False)
     data = Column(JSON, nullable=False)
+    user_id = Column(String, index=True)
 
 class Watchlist(Base):
     __tablename__ = "watchlists"

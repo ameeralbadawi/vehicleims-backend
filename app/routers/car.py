@@ -4,6 +4,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.database import SessionLocal
 from app.models import Car
 from app.schemas import CarCreate
+from app.auth import get_authenticated_user
 
 router = APIRouter()
 
@@ -16,8 +17,8 @@ def get_db():
         db.close()
 
 @router.post("/cars/")
-def create_car(car: CarCreate, db: Session = Depends(get_db)):
-    existing = db.query(Car).filter(Car.vin == car.vin).first()
+def create_car(car: CarCreate, db: Session = Depends(get_db), user_id: str = Depends(get_authenticated_user)):
+    existing = db.query(Car).filter(Car.vin == car.vin, Car.user_id == user_id).first()
     if existing:
         raise HTTPException(status_code=400, detail="Car with this VIN already exists.")
     
@@ -26,7 +27,7 @@ def create_car(car: CarCreate, db: Session = Depends(get_db)):
     if "status" not in car_data:
         car_data["status"] = "Available"
     
-    new_car = Car(vin=car.vin, data=car_data)
+    new_car = Car(vin=car.vin, data=car_data, user_id=user_id)
     db.add(new_car)
     db.commit()
     db.refresh(new_car)
@@ -49,8 +50,8 @@ def create_car(car: CarCreate, db: Session = Depends(get_db)):
     }
 
 @router.get("/cars/")
-def get_all_cars(db: Session = Depends(get_db)):
-    cars = db.query(Car).all()
+def get_all_cars(db: Session = Depends(get_db), user_id: str = Depends(get_authenticated_user)):
+    cars = db.query(Car).filter(Car.user_id == user_id).all()
     result = []
 
     for car in cars:
@@ -82,8 +83,8 @@ def get_all_cars(db: Session = Depends(get_db)):
     return result
 
 @router.delete("/cars/{vin}")
-def delete_car(vin: str, db: Session = Depends(get_db)):
-    car = db.query(Car).filter(Car.vin == vin).first()
+def delete_car(vin: str, db: Session = Depends(get_db), user_id: str = Depends(get_authenticated_user)):
+    car = db.query(Car).filter(Car.vin == vin, Car.user_id == user_id).first()    
     if not car:
         raise HTTPException(status_code=404, detail="Car not found.")
     db.delete(car)
@@ -91,13 +92,13 @@ def delete_car(vin: str, db: Session = Depends(get_db)):
     return {"detail": f"Car with VIN {vin} deleted."}
 
 @router.patch("/cars/{vin}")
-def update_car_status(vin: str, payload: dict, db: Session = Depends(get_db)):
+def update_car_status(vin: str, payload: dict, db: Session = Depends(get_db), user_id: str = Depends(get_authenticated_user)):
     new_status = payload.get("status")
     
     if not new_status:
         raise HTTPException(status_code=400, detail="Missing 'status' in payload")
 
-    car = db.query(Car).filter(Car.vin == vin).first()
+    car = db.query(Car).filter(Car.vin == vin, Car.user_id == user_id).first()
     if not car:
         raise HTTPException(status_code=404, detail="Car not found")
 
@@ -113,8 +114,8 @@ def update_car_status(vin: str, payload: dict, db: Session = Depends(get_db)):
     return {"vin": vin, "status": new_status, "id": car.id}
 
 @router.put("/cars/{vin}")
-def update_car(vin: str, payload: dict, db: Session = Depends(get_db)):
-    car = db.query(Car).filter(Car.vin == vin).first()
+def update_car(vin: str, payload: dict, db: Session = Depends(get_db), user_id: str = Depends(get_authenticated_user)):
+    car = db.query(Car).filter(Car.vin == vin, Car.user_id == user_id).first()
     if not car:
         raise HTTPException(status_code=404, detail="Car not found.")
 
