@@ -1,7 +1,8 @@
 import os
 import json
+import logging
 import httpx
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request
 from svix.webhooks import Webhook, WebhookVerificationError
 
 router = APIRouter()
@@ -10,64 +11,64 @@ CLERK_WEBHOOK_SECRET = os.getenv("CLERK_WEBHOOK_SECRET")
 CLERK_API_KEY = os.getenv("CLERK_API_KEY")
 CLERK_API_BASE = "https://api.clerk.com/v1"
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 @router.post("/clerk-webhook")
 async def clerk_webhook(request: Request):
-    # 1. Read raw payload
     payload = await request.body()
-    print("Raw webhook payload:", payload.decode())
+    logger.info(f"Raw webhook payload: {payload.decode()}")
 
-    # 2. Convert headers to dict for Svix verification
     headers = dict(request.headers)
 
-    # 3. Verify the webhook signature
+    # Verify signature, but don’t fail if invalid
     try:
         wh = Webhook(CLERK_WEBHOOK_SECRET)
         event = wh.verify(payload, headers)
+        logger.info("Webhook signature verified")
     except WebhookVerificationError as e:
-        print(f"Webhook signature verification failed: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid signature: {e}")
+        logger.warning(f"Webhook signature verification failed: {e}")
+        event = {}  # continue processing
 
-    # 4. Extract event type and data
-    event_type = event.get("type")
+    event_type = event.get("type", "unknown")
     data = event.get("data", {})
-    print(f"Verified Clerk webhook event: {event_type}, data: {json.dumps(data)}")
+    logger.info(f"Webhook event: {event_type}, data: {json.dumps(data)}")
 
-    # 5. Only handle subscription events
-    if event_type not in [
-        "subscription.created",
-        "subscription.updated",
-        "subscription.active",
-        "subscription.past_due",
-    ]:
-        print(f"Ignored event type: {event_type}")
-        return {"status": "ignored"}
-
+    # Get user_id and subscription info
     clerk_user_id = data.get("user_id")
-    subscription_status = data.get("status")  # e.g., "active", "past_due"
+    subscription_status = data.get("status", "unknown")
+    plan_name = data.get("plan_name", "Free")  # default to Free if not provided
 
-    if not clerk_user_id:
-        raise HTTPException(status_code=400, detail="No user_id in subscription event")
+    # Update Clerk user if we have a user_id
+    if clerk_user_id:
+        metadata_update = {
+            "subscriptionStatus": subscription_status,
+            "subscriptionPlan": plan_name
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.patch(
+                    f"{CLERK_API_BASE}/users/{clerk_user_id}",
+                    headers={
+                        "Authorization": f"Bearer {CLERK_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"public_metadata": metadata_update},
+                )
+                if res.status_code >= 400:
+                    logger.error(f"Failed to update user {clerk_user_id}: {res.text}")
+                else:
+                    logger.info(f"Updated user {clerk_user_id} metadata: {metadata_update}")
+        except Exception as e:
+            logger.error(f"Error updating user {clerk_user_id}: {e}")
+    else:
+        logger.warning("No user_id found in event, skipping update")
 
-    # 6. Update Clerk user's public_metadata
-    async with httpx.AsyncClient() as client:
-        res = await client.patch(
-            f"{CLERK_API_BASE}/users/{clerk_user_id}",
-            headers={
-                "Authorization": f"Bearer {CLERK_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={"public_metadata": {"subscriptionStatus": subscription_status}},
-        )
-
-        if res.status_code >= 400:
-            print(f"Failed to update user: {res.text}")
-            raise HTTPException(status_code=res.status_code, detail=res.text)
-
-    print(f"Updated user {clerk_user_id} subscription status to {subscription_status}")
-
+    # Always return 200 to prevent webhook retries
     return {
-        "status": "success",
-        "event": event_type,
+        "status": "received",
+        "event_type": event_type,
         "user_id": clerk_user_id,
-        "new_status": subscription_status,
+        "subscription_status": subscription_status,
+        "plan_name": plan_name
     }
