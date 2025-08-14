@@ -12,10 +12,14 @@ CLERK_API_BASE = "https://api.clerk.com/v1"
 
 @router.post("/clerk-webhook")
 async def clerk_webhook(request: Request):
+    # 1. Read raw payload
     payload = await request.body()
-    headers = dict(request.headers)  # convert to dict for Svix
+    print("Raw webhook payload:", payload.decode())
 
-    # 1. Verify webhook using Clerk's secret
+    # 2. Convert headers to dict for Svix verification
+    headers = dict(request.headers)
+
+    # 3. Verify the webhook signature
     try:
         wh = Webhook(CLERK_WEBHOOK_SECRET)
         event = wh.verify(payload, headers)
@@ -23,19 +27,19 @@ async def clerk_webhook(request: Request):
         print(f"Webhook signature verification failed: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid signature: {e}")
 
+    # 4. Extract event type and data
     event_type = event.get("type")
     data = event.get("data", {})
+    print(f"Verified Clerk webhook event: {event_type}, data: {json.dumps(data)}")
 
-    print(f"Received Clerk webhook event: {event_type}, data: {json.dumps(data)}")
-
-    # 2. Only handle subscription events
+    # 5. Only handle subscription events
     if event_type not in [
         "subscription.created",
         "subscription.updated",
         "subscription.active",
         "subscription.past_due",
     ]:
-        print("Ignored event type")
+        print(f"Ignored event type: {event_type}")
         return {"status": "ignored"}
 
     clerk_user_id = data.get("user_id")
@@ -44,7 +48,7 @@ async def clerk_webhook(request: Request):
     if not clerk_user_id:
         raise HTTPException(status_code=400, detail="No user_id in subscription event")
 
-    # 3. Update the Clerk user's public_metadata
+    # 6. Update Clerk user's public_metadata
     async with httpx.AsyncClient() as client:
         res = await client.patch(
             f"{CLERK_API_BASE}/users/{clerk_user_id}",
