@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import car
 from app.routers import watchlists
+from app.routers import clerk_webhook
 
 
 app = FastAPI()
@@ -20,4 +21,5 @@ app.add_middleware(
 # Register routers
 app.include_router(car.router)
 app.include_router(watchlists.router)
+app.include_router(clerk_webhook.router)
 
