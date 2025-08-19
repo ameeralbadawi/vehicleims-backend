@@ -1,19 +1,20 @@
 # auth.py
 import os
-from fastapi import HTTPException, Header
+from fastapi import HTTPException, Header, Depends
 from clerk_backend_api import Clerk
 
+# Initialize Clerk client
 clerk = Clerk(bearer_auth=os.getenv("CLERK_API_KEY"))
 
-async def get_authenticated_user(authorization: str = Header(None)):
+def get_authenticated_user(authorization: str = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
 
-    token = authorization.replace("Bearer ", "")
+    token = authorization.replace("Bearer ", "").strip()
 
     try:
-        result = await clerk.sessions.authenticate_request(
-            headers={"authorization": f"Bearer {token}"}
+        result = clerk.sessions.authenticate_request(
+            headers={"Authorization": f"Bearer {token}"}
         )
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired session token")
