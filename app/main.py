@@ -11,7 +11,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "https://jolly-sand-0ed3a040f.2.azurestaticapps.net",
-        "https://vehicleims-backend-a9ffehefgdhuahc0.centralus-01.azurewebsites.net"
+        "https://vehicleims-backend-a9ffehefgdhuahc0.centralus-01.azurewebsites.net",
+        "https://www.carvintory.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
