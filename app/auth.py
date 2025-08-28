@@ -6,7 +6,7 @@ from jwt import PyJWKClient
 import json
 
 # JWT configuration
-CLERK_JWKS_URL = "https://fit-giraffe-55.clerk.accounts.dev/.well-known/jwks.json"
+CLERK_JWKS_URL = "https://clerk.carvintory.com/.well-known/jwks.json"
 jwks_client = PyJWKClient(CLERK_JWKS_URL)
 
 async def get_authenticated_user(authorization: str = Header(None)):
@@ -43,7 +43,7 @@ async def get_authenticated_user(authorization: str = Header(None)):
             signing_key.key,
             algorithms=["RS256"],
             audience="backend-api",  # MUST match your template name
-            issuer="https://fit-giraffe-55.clerk.accounts.dev",
+            issuer="https://clerk.carvintory.com",
             options={"verify_exp": True}
         )
         
@@ -61,7 +61,7 @@ async def get_authenticated_user(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid audience")
     except jwt.InvalidIssuerError as e:
         print(f"❌ Invalid issuer error: {e}")
-        print(f"Expected issuer: 'https://fit-giraffe-55.clerk.accounts.dev'")
+        print(f"Expected issuer: 'https://clerk.carvintory.com'")
         raise HTTPException(status_code=401, detail="Invalid issuer")
     except Exception as e:
         print(f"❌ JWT verification failed: {type(e).__name__}: {e}")
