@@ -25,21 +25,37 @@ async def clerk_webhook(request: Request):
     event_type = event.get("type")
     data = event.get("data", {})
     
-    print(f"✅ Verified event: {event_type}")
-    print(json.dumps(data, indent=2))
+    print(f"🔔 Received event: {event_type}")
+    print(f"📦 Event data: {json.dumps(data, indent=2)}")
 
     # Extract user_id from different event structures
-    clerk_user_id = (
-        data.get("id")  # user events
-        or data.get("user_id")  # some subscription events
-        or data.get("payer", {}).get("user_id")  # payment events
-        or data.get("subscription", {}).get("user_id")  # subscription events
-        or data.get("object", {}).get("user_id")  # subscription item events
-    )
+    clerk_user_id = None
+    
+    # Try different paths to find user_id
+    possible_user_id_paths = [
+        data.get("id"),
+        data.get("user_id"),
+        data.get("payer", {}).get("user_id"),
+        data.get("subscription", {}).get("user_id"),
+        data.get("object", {}).get("user_id"),
+        data.get("subscription_item", {}).get("subscription", {}).get("user_id"),
+        data.get("items", [{}])[0].get("subscription", {}).get("user_id") if data.get("items") else None
+    ]
+    
+    for user_id in possible_user_id_paths:
+        if user_id:
+            clerk_user_id = user_id
+            break
     
     if not clerk_user_id:
-        print("❌ No user_id found in event data")
+        print("❌ No user_id found in event data. Available keys:", list(data.keys()))
+        if "subscription" in data:
+            print("📋 Subscription data:", data["subscription"])
+        if "subscription_item" in data:
+            print("📋 Subscription item data:", data["subscription_item"])
         return {"status": "skipped", "reason": "no user_id"}
+
+    print(f"👤 User ID extracted: {clerk_user_id}")
 
     # Default values
     subscription_status = None
@@ -52,44 +68,54 @@ async def clerk_webhook(request: Request):
     if event_type == "user.created":
         subscription_status = "inactive"
         subscription_plan = "None"
+        print(f"🆕 New user created: {clerk_user_id}")
 
     elif event_type == "user.deleted":
         subscription_status = "inactive"
         subscription_plan = "None"
+        print(f"🗑️ User deleted: {clerk_user_id}")
 
     # ----------------------
-    # SUBSCRIPTION EVENTS
+    # SUBSCRIPTION EVENTS - CRITICAL SECTION
     # ----------------------
     elif event_type in [
         "subscription.created",
         "subscription.updated",
         "subscription.activated",
         "subscription.plan_changed",
+        "subscriptionItem.active",
+        "subscriptionItem.created",
+        "subscriptionItem.updated"
     ]:
-        # Check for active subscription items
-        active_item = None
-        subscription_data = data.get("subscription") or data
+        print(f"💰 Subscription event: {event_type}")
         
-        # Look for active items in different possible locations
-        items = (
-            subscription_data.get("items", [])
-            or subscription_data.get("subscription_items", [])
-            or data.get("items", [])
+        # Try to get subscription data from different locations
+        subscription_data = (
+            data.get("subscription") 
+            or data.get("subscription_item", {}).get("subscription")
+            or data
         )
         
-        active_item = next(
-            (item for item in items if item.get("status") in ["active", "trialing"]),
-            None,
-        )
+        print(f"📊 Subscription data: {json.dumps(subscription_data, indent=2)}")
         
-        if active_item:
+        # Check subscription status
+        sub_status = subscription_data.get("status")
+        print(f"📈 Subscription status: {sub_status}")
+        
+        if sub_status in ["active", "trialing"]:
             subscription_status = "active"
-            subscription_plan = active_item.get("plan", {}).get("name", "None")
+            
+            # Try to get plan name from different locations
+            subscription_plan = (
+                subscription_data.get("plan", {}).get("name")
+                or subscription_data.get("plan_name")
+                or subscription_data.get("items", [{}])[0].get("plan", {}).get("name")
+                or "Unknown Plan"
+            )
+            print(f"📋 Subscription plan: {subscription_plan}")
         else:
-            # If no active items found, check subscription status directly
-            if subscription_data.get("status") in ["active", "trialing"]:
-                subscription_status = "active"
-                subscription_plan = subscription_data.get("plan", {}).get("name", "None")
+            subscription_status = "inactive"
+            subscription_plan = "None"
 
     elif event_type in [
         "subscription.past_due",
@@ -98,24 +124,10 @@ async def clerk_webhook(request: Request):
         "subscriptionItem.ended",
         "subscriptionItem.canceled",
         "subscriptionItem.past_due",
-        "subscriptionItem.incomplete"
+        "subscriptionItem.incomplete",
+        "subscriptionItem.abandoned"
     ]:
-        subscription_status = "inactive"
-        subscription_plan = "None"
-
-    elif event_type in [
-        "subscriptionItem.active",
-        "subscriptionItem.created",
-        "subscriptionItem.updated",
-        "subscriptionItem.upcoming"
-    ]:
-        # These events indicate an active subscription
-        subscription_status = "active"
-        # Try to extract plan name from the item
-        item_data = data.get("subscription_item") or data
-        subscription_plan = item_data.get("plan", {}).get("name", "None")
-
-    elif event_type == "subscriptionItem.abandoned":
+        print(f"🔴 Inactive subscription event: {event_type}")
         subscription_status = "inactive"
         subscription_plan = "None"
 
@@ -128,8 +140,11 @@ async def clerk_webhook(request: Request):
         if subscription_plan is not None:
             metadata_update["subscriptionPlan"] = subscription_plan
 
+        print(f"🔄 Attempting to update metadata for {clerk_user_id}: {metadata_update}")
+
         try:
             async with httpx.AsyncClient() as client:
+                # Use the correct endpoint for updating metadata
                 res = await client.patch(
                     f"{CLERK_API_BASE}/users/{clerk_user_id}/metadata",
                     headers={
@@ -139,11 +154,12 @@ async def clerk_webhook(request: Request):
                     json={"public_metadata": metadata_update},
                 )
 
-            if res.status_code >= 400:
+            if res.status_code == 200:
+                print(f"✅ Successfully updated Clerk metadata for {clerk_user_id}")
+                print(f"📋 New metadata: {metadata_update}")
+            else:
                 print(f"❌ Failed to update Clerk: {res.status_code} - {res.text}")
                 return {"status": "error", "details": res.text}
-
-            print(f"✅ Updated Clerk metadata for {clerk_user_id}: {metadata_update}")
             
         except Exception as e:
             print(f"❌ Exception during Clerk update: {e}")
