@@ -24,16 +24,24 @@ async def clerk_webhook(request: Request):
 
     event_type = event.get("type")
     data = event.get("data", {})
-
+    
     print(f"✅ Verified event: {event_type}")
     print(json.dumps(data, indent=2))
 
-    # figure out user_id depending on event type
-    clerk_user_id = data.get("id") or data.get("user_id") or data.get("payer", {}).get("user_id")
+    # Extract user_id from different event structures
+    clerk_user_id = (
+        data.get("id")  # user events
+        or data.get("user_id")  # some subscription events
+        or data.get("payer", {}).get("user_id")  # payment events
+        or data.get("subscription", {}).get("user_id")  # subscription events
+        or data.get("object", {}).get("user_id")  # subscription item events
+    )
+    
     if not clerk_user_id:
+        print("❌ No user_id found in event data")
         return {"status": "skipped", "reason": "no user_id"}
 
-    # default values
+    # Default values
     subscription_status = None
     subscription_plan = None
     metadata_update = {}
@@ -46,13 +54,8 @@ async def clerk_webhook(request: Request):
         subscription_plan = "None"
 
     elif event_type == "user.deleted":
-        # Wipe subscription info when user deleted
         subscription_status = "inactive"
         subscription_plan = "None"
-
-    elif event_type == "user.updated":
-        # usually you don’t need to touch metadata here unless you want to
-        pass
 
     # ----------------------
     # SUBSCRIPTION EVENTS
@@ -63,19 +66,56 @@ async def clerk_webhook(request: Request):
         "subscription.activated",
         "subscription.plan_changed",
     ]:
+        # Check for active subscription items
+        active_item = None
+        subscription_data = data.get("subscription") or data
+        
+        # Look for active items in different possible locations
+        items = (
+            subscription_data.get("items", [])
+            or subscription_data.get("subscription_items", [])
+            or data.get("items", [])
+        )
+        
         active_item = next(
-            (item for item in data.get("items", []) if item.get("status") == "active"),
+            (item for item in items if item.get("status") in ["active", "trialing"]),
             None,
         )
+        
         if active_item:
             subscription_status = "active"
             subscription_plan = active_item.get("plan", {}).get("name", "None")
+        else:
+            # If no active items found, check subscription status directly
+            if subscription_data.get("status") in ["active", "trialing"]:
+                subscription_status = "active"
+                subscription_plan = subscription_data.get("plan", {}).get("name", "None")
 
     elif event_type in [
         "subscription.past_due",
         "subscription.canceled",
         "subscription.expired",
+        "subscriptionItem.ended",
+        "subscriptionItem.canceled",
+        "subscriptionItem.past_due",
+        "subscriptionItem.incomplete"
     ]:
+        subscription_status = "inactive"
+        subscription_plan = "None"
+
+    elif event_type in [
+        "subscriptionItem.active",
+        "subscriptionItem.created",
+        "subscriptionItem.updated",
+        "subscriptionItem.upcoming"
+    ]:
+        # These events indicate an active subscription
+        subscription_status = "active"
+        # Try to extract plan name from the item
+        item_data = data.get("subscription_item") or data
+        subscription_plan = item_data.get("plan", {}).get("name", "None")
+
+    elif event_type == "subscriptionItem.abandoned":
         subscription_status = "inactive"
         subscription_plan = "None"
 
@@ -88,21 +128,29 @@ async def clerk_webhook(request: Request):
         if subscription_plan is not None:
             metadata_update["subscriptionPlan"] = subscription_plan
 
-        async with httpx.AsyncClient() as client:
-            res = await client.patch(
-                f"{CLERK_API_BASE}/users/{clerk_user_id}",
-                headers={
-                    "Authorization": f"Bearer {CLERK_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={"public_metadata": metadata_update},
-            )
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.patch(
+                    f"{CLERK_API_BASE}/users/{clerk_user_id}/metadata",
+                    headers={
+                        "Authorization": f"Bearer {CLERK_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"public_metadata": metadata_update},
+                )
 
-        if res.status_code >= 400:
-            print(f"❌ Failed to update Clerk: {res.text}")
-            return {"status": "error", "details": res.text}
+            if res.status_code >= 400:
+                print(f"❌ Failed to update Clerk: {res.status_code} - {res.text}")
+                return {"status": "error", "details": res.text}
 
-        print(f"✅ Updated Clerk metadata for {clerk_user_id}: {metadata_update}")
+            print(f"✅ Updated Clerk metadata for {clerk_user_id}: {metadata_update}")
+            
+        except Exception as e:
+            print(f"❌ Exception during Clerk update: {e}")
+            return {"status": "error", "details": str(e)}
+
+    else:
+        print(f"ℹ️ No metadata update needed for event: {event_type}")
 
     return {
         "status": "success",
