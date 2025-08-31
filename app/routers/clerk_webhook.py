@@ -28,22 +28,25 @@ async def clerk_webhook(request: Request):
     
     print(f"✅ Verified event: {event_type}")
 
-    # Extract user_id from the correct location based on your JSON
-    clerk_user_id = data.get("payer", {}).get("user_id")
+    # Extract user_id - SIMPLIFIED and CORRECTED
+    clerk_user_id = None
     
-    if not clerk_user_id:
-        # Fallback to other locations for different event types
-        clerk_user_id = (
-            data.get("id")  # user events
-            or data.get("user_id")  # some events
-            or data.get("subscription", {}).get("user_id")  # subscription events
-        )
+    # For user events: user_id is at data.id
+    if event_type in ["user.created", "user.updated", "user.deleted"]:
+        clerk_user_id = data.get("id")
+        print(f"👤 User event - ID from data.id: {clerk_user_id}")
+    
+    # For subscription events: user_id is at data.payer.user_id
+    elif "subscription" in event_type or "subscriptionItem" in event_type:
+        clerk_user_id = data.get("payer", {}).get("user_id")
+        print(f"💰 Subscription event - ID from data.payer.user_id: {clerk_user_id}")
     
     if not clerk_user_id:
         print("❌ No user_id found in event data")
+        print(f"🔍 Available keys: {list(data.keys())}")
         return {"status": "success", "event": event_type, "reason": "no user_id"}
 
-    print(f"👤 User ID: {clerk_user_id}")
+    print(f"👤 Final User ID: {clerk_user_id}")
 
     # Default values
     subscription_status = None
@@ -54,15 +57,18 @@ async def clerk_webhook(request: Request):
     # USER EVENTS
     # ----------------------
     if event_type == "user.created":
+        print(f"🆕 New user created: {clerk_user_id}")
         subscription_status = "inactive"
         subscription_plan = "None"
+        print(f"📝 Setting initial metadata: inactive, None")
 
     elif event_type == "user.deleted":
+        print(f"🗑️ User deleted: {clerk_user_id}")
         subscription_status = "inactive"
         subscription_plan = "None"
 
     # ----------------------
-    # SUBSCRIPTION ITEM EVENTS (THE MAIN ONES)
+    # SUBSCRIPTION ITEM EVENTS
     # ----------------------
     elif event_type in [
         "subscriptionItem.active",
@@ -128,8 +134,10 @@ async def clerk_webhook(request: Request):
 
             if res.status_code == 200:
                 print(f"✅ Successfully updated metadata for {clerk_user_id}")
+                print(f"📋 New metadata: {metadata_update}")
             else:
                 print(f"❌ Failed to update Clerk: {res.status_code} - {res.text}")
+                print(f"💥 This might be why metadata isn't updating!")
                 
         except Exception as e:
             print(f"❌ Exception during Clerk update: {e}")
