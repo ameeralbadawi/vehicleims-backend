@@ -28,22 +28,19 @@ async def clerk_webhook(request: Request):
     
     print(f"✅ Verified event: {event_type}")
 
-    # Extract user_id - SIMPLIFIED and CORRECTED
+    # Extract user_id
     clerk_user_id = None
     
-    # For user events: user_id is at data.id
     if event_type in ["user.created", "user.updated", "user.deleted"]:
         clerk_user_id = data.get("id")
         print(f"👤 User event - ID from data.id: {clerk_user_id}")
     
-    # For subscription events: user_id is at data.payer.user_id
     elif "subscription" in event_type or "subscriptionItem" in event_type:
         clerk_user_id = data.get("payer", {}).get("user_id")
         print(f"💰 Subscription event - ID from data.payer.user_id: {clerk_user_id}")
     
     if not clerk_user_id:
         print("❌ No user_id found in event data")
-        print(f"🔍 Available keys: {list(data.keys())}")
         return {"status": "success", "event": event_type, "reason": "no user_id"}
 
     print(f"👤 Final User ID: {clerk_user_id}")
@@ -54,7 +51,7 @@ async def clerk_webhook(request: Request):
     metadata_update = {}
 
     # ----------------------
-    # USER EVENTS
+    # USER EVENTS - PRIORITY 1
     # ----------------------
     if event_type == "user.created":
         print(f"🆕 New user created: {clerk_user_id}")
@@ -68,7 +65,7 @@ async def clerk_webhook(request: Request):
         subscription_plan = "None"
 
     # ----------------------
-    # SUBSCRIPTION ITEM EVENTS
+    # SUBSCRIPTION EVENTS - PRIORITY 2
     # ----------------------
     elif event_type in [
         "subscriptionItem.active",
@@ -76,11 +73,19 @@ async def clerk_webhook(request: Request):
         "subscriptionItem.updated",
         "subscriptionItem.upcoming"
     ]:
-        print(f"💰 Active subscription item event: {event_type}")
-        subscription_status = "active"
-        # Get plan name from the event data
-        subscription_plan = data.get("plan", {}).get("name", "test")
-        print(f"📋 Plan: {subscription_plan}")
+        print(f"💰 Subscription item event: {event_type}")
+        
+        # Check if this is a FREE plan that should be treated as inactive
+        plan_name = data.get("plan", {}).get("name", "").lower()
+        
+        if plan_name in ["free", "none", "trial"]:
+            print(f"🔓 Free plan detected: {plan_name} - treating as inactive")
+            subscription_status = "inactive"
+            subscription_plan = "None"
+        else:
+            print(f"💰 Paid plan detected: {plan_name} - treating as active")
+            subscription_status = "active"
+            subscription_plan = data.get("plan", {}).get("name", "test")
 
     elif event_type in [
         "subscription.active",
@@ -90,8 +95,9 @@ async def clerk_webhook(request: Request):
         print(f"💰 Subscription event: {event_type}")
         subscription_data = data.get("subscription", data)
         status = subscription_data.get("status", "inactive")
+        plan_name = subscription_data.get("plan", {}).get("name", "").lower()
         
-        if status in ["active", "trialing"]:
+        if status in ["active", "trialing"] and plan_name not in ["free", "none", "trial"]:
             subscription_status = "active"
             subscription_plan = subscription_data.get("plan", {}).get("name", "test")
         else:
@@ -126,7 +132,7 @@ async def clerk_webhook(request: Request):
                 res = await client.patch(
                     f"{CLERK_API_BASE}/users/{clerk_user_id}/metadata",
                     headers={
-                        "Authorization": f"Bearer {CLERK_API_KEY}",
+                        "Authorization": f"Bearer ${CLERK_API_KEY}",
                         "Content-Type": "application/json",
                     },
                     json={"public_metadata": metadata_update},
@@ -134,10 +140,8 @@ async def clerk_webhook(request: Request):
 
             if res.status_code == 200:
                 print(f"✅ Successfully updated metadata for {clerk_user_id}")
-                print(f"📋 New metadata: {metadata_update}")
             else:
                 print(f"❌ Failed to update Clerk: {res.status_code} - {res.text}")
-                print(f"💥 This might be why metadata isn't updating!")
                 
         except Exception as e:
             print(f"❌ Exception during Clerk update: {e}")
