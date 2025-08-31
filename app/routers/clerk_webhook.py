@@ -37,10 +37,11 @@ async def clerk_webhook(request: Request):
 
     print(f"👤 User ID: {clerk_user_id}")
 
-    # Process subscription events
+    # Only process PAID subscription events
     subscription_status = None
     subscription_plan = None
 
+    # Check for PAID subscription items
     if event_type in [
         "subscriptionItem.active",
         "subscriptionItem.created", 
@@ -51,59 +52,39 @@ async def clerk_webhook(request: Request):
     ]:
         print(f"💰 Processing subscription event: {event_type}")
         
-        # Check for PAID subscription items
-        items = data.get("items", [])
-        if not items and "subscription_item" in data:
-            # Handle single subscription item events
+        # Get all items from the event
+        items = []
+        if "items" in data:
+            items = data["items"]
+        elif "subscription_item" in data:
+            items = [data]
+        elif event_type.startswith("subscriptionItem"):
             items = [data]
         
-        # Look for any PAID subscription items
-        paid_item_found = False
+        # Look for ANY paid subscription item
         for item in items:
             plan = item.get("plan", {})
             amount = plan.get("amount", 0)
             plan_name = plan.get("name", "").lower()
+            status = item.get("status", "")
             
-            print(f"📋 Item: {plan_name}, Amount: {amount}")
+            print(f"📋 Item: {plan_name}, Amount: {amount}, Status: {status}")
             
-            # If we find ANY paid item, the user should be active
-            if amount > 0 and plan_name not in ["free", "none"]:
-                paid_item_found = True
+            # Only process ACTIVE paid items (amount > 0)
+            if amount > 0 and status == "active" and plan_name not in ["free", "none"]:
                 subscription_status = "active"
                 subscription_plan = plan.get("name", "paid")
-                print(f"✅ Paid item found: {plan_name} (${amount})")
+                print(f"✅ PAID ACTIVE ITEM FOUND: {plan_name} (${amount})")
                 break
-        
-        if paid_item_found:
-            print(f"🎯 Setting user to ACTIVE with plan: {subscription_plan}")
-        else:
-            # No paid items found, check if this is a free plan
-            subscription_status = "inactive"
-            subscription_plan = "None"
-            print(f"🔓 No paid items found - setting to INACTIVE")
 
-    elif event_type in [
-        "subscriptionItem.ended",
-        "subscriptionItem.canceled", 
-        "subscriptionItem.past_due",
-        "subscriptionItem.incomplete",
-        "subscriptionItem.abandoned",
-        "subscription.past_due",
-        "subscription.canceled",
-        "subscription.expired"
-    ]:
-        print(f"🔴 Cancellation event: {event_type}")
-        subscription_status = "inactive"
-        subscription_plan = "None"
-
-    # Apply the update
-    if subscription_status is not None:
+    # Apply the update ONLY if we found a paid active subscription
+    if subscription_status == "active":
         metadata_update = {
             "subscriptionStatus": subscription_status,
             "subscriptionPlan": subscription_plan
         }
 
-        print(f"🔄 Updating metadata: {metadata_update}")
+        print(f"🔄 Setting PAID subscription: {metadata_update}")
 
         try:
             async with httpx.AsyncClient() as client:
@@ -117,7 +98,7 @@ async def clerk_webhook(request: Request):
                 )
 
             if res.status_code == 200:
-                print(f"✅ Successfully updated metadata!")
+                print(f"✅ Successfully set PAID subscription metadata!")
             else:
                 print(f"❌ Failed to update Clerk: {res.status_code}")
                 print(f"💥 Response: {res.text}")
@@ -126,11 +107,11 @@ async def clerk_webhook(request: Request):
             print(f"❌ Exception during update: {e}")
 
     else:
-        print(f"ℹ️ No subscription status change needed for {event_type}")
+        print(f"ℹ️ No PAID active subscription found in {event_type} - skipping update")
 
     return {
         "status": "success",
         "event": event_type,
         "user_id": clerk_user_id,
-        "updated": subscription_status is not None
+        "updated": subscription_status == "active"
     }
